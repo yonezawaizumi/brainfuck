@@ -23,7 +23,7 @@ case class BFMachine(val heap: Vector[Byte] = Vector(0), val pos: Int = 0, val p
   def > = if (ptr < heap.length - 1) {
     BFMachine(heap, pos + 1, ptr + 1)
   } else {
-    BFMachine(heap :+ 0, pos + 1, ptr + 1)
+    BFMachine(heap :+ 0.toByte, pos + 1, ptr + 1)
   }
   def < : Either[Error, BFMachine] = if (ptr > 0) {
     Right(BFMachine(heap, pos + 1, ptr - 1))
