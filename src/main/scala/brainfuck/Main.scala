@@ -1,4 +1,5 @@
 import scopt.OptionParser
+import net.team2xh.scurses._
 
 case class Args (autoStepMillisec: Int, source: String)
 
