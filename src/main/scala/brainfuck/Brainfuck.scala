@@ -48,11 +48,13 @@ case class BFMachine(val heap: Vector[Byte] = Vector(0), val pos: Int = 0, val p
   }).mkString("")
 }
 
+// NOTE: I/O
 case class IO(val in: Seq[Byte], val out: Seq[Byte] = Seq.empty) {
   def get = if (in.isEmpty) (this, None) else (IO(in.tail, out), Some(in.head))
   def put(c: Byte) = IO(in, c +: out)
 }
 
+// NOTE: コード1つごとの機械の状態
 case class State(machine: BFMachine, io: IO, finished: Boolean = false) {
   // I/O がない限りはメモリーのみ更新
   def updated(machine: BFMachine) : Either[Error, State] = Right(State(machine, io))
@@ -74,7 +76,7 @@ class Brainfuck {
       Left(Error("loop overflow", loops.head))
     })
   }
-  // NOOTE: コード1つを実行
+  // NOTE: コード1つを実行
   def exec1(codes: Vector[Code], state: State) : Either[Error, State] = {
     val code = codes(state.machine.pos)
     // NOTE: 1命令ずつ実行する
