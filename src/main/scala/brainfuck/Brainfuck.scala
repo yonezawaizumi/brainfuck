@@ -1,13 +1,13 @@
 import scala.collection.immutable._
 
 // NOTE: エラー
-case class Error(val message: String, val pos: Int = 0, val ptr: Int = 0)
+case class Error(message: String, pos: Int = 0, ptr: Int = 0)
 
 // NOTTE: 実行コード1つ
-case class Code(val c: Char, val close: Option[Int] = None, val open: Option[Int] = None)
+case class Code(c: Char, close: Option[Int] = None, open: Option[Int] = None)
 
 // NOTE: [] をパースするための状態
-case class Loops(val open: Seq[Int] = Seq.empty, val open2Close :Map[Int, Int] = Map.empty, val close2Open: Map[Int, Int] = Map.empty) {
+case class Loops(open: Seq[Int] = Seq.empty, open2Close :Map[Int, Int] = Map.empty, close2Open: Map[Int, Int] = Map.empty) {
   def isEmpty = open.isEmpty
   def head = open.head
   def push(pos: Int) = Loops(pos +: open, open2Close, close2Open)
@@ -19,7 +19,7 @@ case class Loops(val open: Seq[Int] = Seq.empty, val open2Close :Map[Int, Int] =
 }
 
 // NOTE: BF に操作される機械
-case class BFMachine(val heap: Vector[Byte] = Vector(0), val pos: Int = 0, val ptr: Int = 0) {
+case class BFMachine(heap: Vector[Byte] = Vector(0), pos: Int = 0, ptr: Int = 0) {
   def > = if (ptr < heap.length - 1) {
     BFMachine(heap, pos + 1, ptr + 1)
   } else {
@@ -49,7 +49,7 @@ case class BFMachine(val heap: Vector[Byte] = Vector(0), val pos: Int = 0, val p
 }
 
 // NOTE: I/O
-case class IO(val in: Seq[Byte], val out: Seq[Byte] = Seq.empty) {
+case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
   def get = if (in.isEmpty) (this, None) else (IO(in.tail, out), Some(in.head))
   def put(c: Byte) = IO(in, c +: out)
 }
