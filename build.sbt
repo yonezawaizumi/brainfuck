@@ -13,8 +13,8 @@ lazy val root = (project in file("."))
     libraryDependencies ++= Seq(
       munit % Test,
       "com.github.scopt" %% "scopt" % "4.1.0",
-      "net.team2xh" % "scurses_2.12" % "1.0.1"
+      "net.team2xh" %% "scurses" % "1.0.1"
     )
-  )
+  ) 
 
 // See https://www.scala-sbt.org/1.x/docs/Using-Sonatype.html for instructions on how to publish to Sonatype.
