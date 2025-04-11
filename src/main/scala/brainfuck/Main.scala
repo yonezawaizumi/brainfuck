@@ -1,5 +1,6 @@
 import net.team2xh.scurses._
 import scala.collection.immutable._
+import scala.util._
 import scopt.OptionParser
 
 class HexDumpedStrings(val chars: String, val hexes: String)
@@ -66,7 +67,7 @@ object Main extends App{
     }
 
     bf.parse(config.source).flatMap(codes => {
-      val init : Either[Error, State] = Right(State(BFMachine(), IO(Seq.empty, Seq.empty)))
+      val init : Try[State] = Success(State(BFMachine(), IO(Seq.empty, Seq.empty)))
       dumpState(config.source, init.toOption.get)
       screen.refresh()
       Iterator.continually(0)
@@ -79,7 +80,7 @@ object Main extends App{
         Thread.sleep(10)
         newState
       }))
-      .dropWhile(res => res.isRight && !res.toOption.get.finished)
+      .dropWhile(res => res.isSuccess && !res.get.finished)
       .take(1).toSeq.head
     })
     screen.put(0, h - 1, "press any key ")

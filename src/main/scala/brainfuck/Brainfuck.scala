@@ -1,7 +1,8 @@
 import scala.collection.immutable._
+import scala.util._
 
 // NOTE: エラー
-case class Error(message: String, pos: Int = 0, ptr: Int = 0)
+case class Error(message: String, pos: Int = 0, ptr: Int = 0) extends java.lang.Exception(message)
 
 // NOTTE: 実行コード1つ
 case class Code(c: Char, close: Option[Int] = None, open: Option[Int] = None)
@@ -11,10 +12,10 @@ case class Loops(open: Seq[Int] = Seq.empty, open2Close :Map[Int, Int] = Map.emp
   def isEmpty = open.isEmpty
   def head = open.head
   def push(pos: Int) = Loops(pos +: open, open2Close, close2Open)
-  def pop(pos: Int) : Either[Error, Loops] = if (isEmpty) {
-    Left(Error("loop underflow", pos))
+  def pop(pos: Int) : Try[Loops] = if (isEmpty) {
+    Failure(Error("loop underflow", pos))
   } else {
-    Right(Loops(open.tail, open2Close + (open.head -> pos), close2Open + (pos -> open.head)))
+    Success(Loops(open.tail, open2Close + (open.head -> pos), close2Open + (pos -> open.head)))
   }
 }
 
@@ -25,10 +26,10 @@ case class BFMachine(heap: Vector[Byte] = Vector(0), pos: Int = 0, ptr: Int = 0)
   } else {
     BFMachine(heap :+ 0.toByte, pos + 1, ptr + 1)
   }
-  def < : Either[Error, BFMachine] = if (ptr > 0) {
-    Right(BFMachine(heap, pos + 1, ptr - 1))
+  def < : Try[BFMachine] = if (ptr > 0) {
+    Success(BFMachine(heap, pos + 1, ptr - 1))
   } else {
-    Left(Error("pointer underrun", pos, ptr))
+    Failure(Error("pointer underrun", pos, ptr))
   }
   def + = {
     val c = heap(ptr) + 1
@@ -57,27 +58,27 @@ case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
 // NOTE: コード1つごとの機械の状態
 case class State(machine: BFMachine, io: IO, step: Int = 1, finished: Boolean = false) {
   // I/O がない限りはメモリーのみ更新
-  def updated(machine: BFMachine) : Either[Error, State] = Right(State(machine, io, step + 1))
+  def updated(machine: BFMachine) : Try[State] = Success(State(machine, io, step + 1))
   def finish = State(machine, io, step, true)
 }
 
 class Brainfuck {
   // NOTE: ソースコードをスキャンして [ と ] の移動位置を記憶
-  def parse(code: String) : Either[Error, Vector[Code]] = {
-    code.zipWithIndex.foldLeft(Right(Loops()): Either[Error, Loops])((loops, c) => loops.flatMap(l => c._1 match {
+  def parse(code: String) : Try[Vector[Code]] = {
+    code.zipWithIndex.foldLeft(Success(Loops()): Try[Loops])((loops, c) => loops.flatMap(l => c._1 match {
       // NOTE: [ の位置をスタックに積む
-      case '[' => Right(l.push(c._2))
+      case '[' => Success(l.push(c._2))
       // NOTE: ] が出たらスタックトップの位置と自分の位置を双方向リンクとして保存
       case ']' => l.pop(c._2)
-      case _ => Right(l)
+      case _ => Success(l)
     })).flatMap(loops => if (loops.isEmpty) {
-      Right(code.zipWithIndex.map(c => Code(c._1, loops.open2Close.get(c._2), loops.close2Open.get(c._2))).toVector)
+      Success(code.zipWithIndex.map(c => Code(c._1, loops.open2Close.get(c._2), loops.close2Open.get(c._2))).toVector)
     } else {
-      Left(Error("loop overflow", loops.head))
+      Failure(Error("loop overflow", loops.head))
     })
   }
   // NOTE: コード1つを実行
-  def exec1(codes: Vector[Code], state: State) : Either[Error, State] = {
+  def exec1(codes: Vector[Code], state: State) : Try[State] = {
     val code = codes(state.machine.pos)
     // NOTE: 1命令ずつ実行する
     val newState = code.c match {
@@ -87,11 +88,11 @@ class Brainfuck {
       case '-' => state.updated(state.machine.-)
       case '.' =>
         val (machine, c) = state.machine.dot
-        Right(State(machine, state.io.put(c), state.step + 1))
+        Success(State(machine, state.io.put(c), state.step + 1))
       case ',' =>
         val res = state.io.get
         //println(res)
-        Right(res._2 match {
+        Success(res._2 match {
           case None => state.finish
           case Some(c) => State(state.machine.comma(c), res._1, state.step + 1)
         })
@@ -100,29 +101,29 @@ class Brainfuck {
       case ']' => state.updated(state.machine.close(code.open.get))
       case _ => state.updated(state.machine.noop)
     }
-    if (newState.isLeft || codes.lengthCompare(newState.toOption.get.machine.pos) > 0) {
+    if (newState.isFailure || codes.lengthCompare(newState.get.machine.pos) > 0) {
       newState
     } else {
-      newState.map(_.finish)
+      Success(newState.get.finish)
     }
   }
 
   // NOTE: パース済みコードを実行
-  def exec(codes: Vector[Code], gets: Seq[Byte]) : Either[Error, Seq[Byte]] = {
-    val init : Either[Error, State] = Right(State(BFMachine(), IO(gets)))
+  def exec(codes: Vector[Code], gets: Seq[Byte]) : Try[Seq[Byte]] = {
+    val init : Try[State] = Success(State(BFMachine(), IO(gets)))
     // NOTE: 無限ループ
     Iterator.continually(0)
     // NOTE: 左畳み込みをしつつ途中経過をぜんぶ吐き出す
     .scanLeft(init)((se, d) => se.flatMap(state => exec1(codes, state)))
     // NOTE: 実行中の途中経過は捨てる
-    .dropWhile(res => res.isRight && !res.toOption.get.finished)
+    .dropWhile(res => res.isSuccess && !res.get.finished)
     // NOTE: 実行終了 or エラー時の先頭以外を捨てて実態を取り出す
     .take(1).toSeq.head
     // NOTE: 返したい IO.out は Seq なので出力と逆順のコレクションになっている
     .map(state => state.io.out.reverse)
   }
 
-  def run(code: String, gets: Seq[Byte]) : Either[Error, Seq[Byte]] = {
+  def run(code: String, gets: Seq[Byte]) : Try[Seq[Byte]] = {
     parse(code).flatMap(codes => exec(codes, gets))
   }
 }
