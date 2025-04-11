@@ -133,13 +133,15 @@ class Brainfuck {
 
   // NOTE: パース済みコードを実行
   def exec(codes: Vector[Code], gets: Seq[Byte]) : Future[Seq[Byte]] = {
-    val init : Future[State[SeqIOStream]] = Future.successful(State(BFMachine(), SeqIOStream(gets, Seq.empty)))
-    // NOTE: 無限ループ
-    val states = Iterator.continually(0)
-    // NOTE: 左畳み込みをしつつ途中経過をぜんぶ吐き出す
-    .scanLeft(init)((state, dummy) => exec1[SeqIOStream](codes, state))
-    // NOTE: 実行中の途中経過は捨てる
-    Future.find(states.toIterable)(_.finished).map(_.get.io.out.reverse)
+    // NOTE: 結果が出るまで末尾再帰風で畳み込む（末尾再帰ではない）
+    def result(state: Future[State[SeqIOStream]]) : Future[Seq[Byte]] = {
+      exec1(codes, state).flatMap(state => if (state.finished) {
+        Future.successful(state.io.out.reverse)
+      } else {
+        result(Future.successful(state))
+      }
+    )}
+    result(Future.successful(State(BFMachine(), SeqIOStream(gets, Seq.empty))))
   }
 
   def run(code: String, gets: Seq[Byte], result: Try[Seq[Byte]] => Unit) : Unit = {
