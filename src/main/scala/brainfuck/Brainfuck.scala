@@ -1,4 +1,6 @@
 import scala.collection.immutable._
+import scala.concurrent._
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util._
 
 // NOTE: エラー
@@ -50,15 +52,36 @@ case class BFMachine(heap: Vector[Byte] = Vector(0), pos: Int = 0, ptr: Int = 0)
 }
 
 // NOTE: I/O
-case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
-  def get = if (in.isEmpty) (this, None) else (IO(in.tail, out), Some(in.head))
-  def put(c: Byte) = IO(in, c +: out)
+trait IOStream[S] {
+  def get : Future[(S, Option[Byte])]
+  def put(b: Byte) : Future[S]
 }
 
+// NOTE: Seq で動機的な I/O
+case class SeqIOStream(in :Seq[Byte], out :Seq[Byte]) extends IOStream[SeqIOStream] {
+  def get : Future[(SeqIOStream, Option[Byte])] = {
+    Promise[(SeqIOStream, Option[Byte])].success(
+      if (in.isEmpty) {
+        (this, None)
+      } else {
+        (SeqIOStream(in.tail, out), Some(in.head))
+      }
+    ).future
+  }
+  def put(b: Byte) : Future[SeqIOStream] = Future.successful(SeqIOStream(in, b +: out))
+}
+
+// NOTE: I/O
+/*case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
+  def get = if (in.isEmpty) (this, None) else (IO(in.tail, out), Some(in.head))
+  def put(c: Byte) = IO(in, c +: out)
+}*/
+
 // NOTE: コード1つごとの機械の状態
-case class State(machine: BFMachine, io: IO, step: Int = 1, finished: Boolean = false) {
+case class State[S <: IOStream[S]](machine: BFMachine, io: S, step: Int = 1, finished: Boolean = false) {
   // I/O がない限りはメモリーのみ更新
-  def updated(machine: BFMachine) : Try[State] = Success(State(machine, io, step + 1))
+  def updated(machine: BFMachine) : Future[State[S]] = Future.successful(State(machine, io, step + 1))
+  def ioUpdated(io: Future[S]) : Future[State[S]] = io.map(io => State[S](machine, io, step))
   def finish = State(machine, io, step, true)
 }
 
@@ -78,52 +101,48 @@ class Brainfuck {
     })
   }
   // NOTE: コード1つを実行
-  def exec1(codes: Vector[Code], state: State) : Try[State] = {
+  def exec1[S <: IOStream[S]](codes: Vector[Code], state: Future[State[S]]) : Future[State[S]] = state.flatMap(state => {
     val code = codes(state.machine.pos)
     // NOTE: 1命令ずつ実行する
-    val newState = code.c match {
+    (code.c match {
       case '>' => state.updated(state.machine.>)
-      case '<' => state.machine.<.map(machine => State(machine, state.io, state.step + 1))
+      case '<' => Promise[State[S]].complete(state.machine.<.map(machine => State(machine, state.io, state.step + 1))).future
       case '+' => state.updated(state.machine.+)
       case '-' => state.updated(state.machine.-)
       case '.' =>
         val (machine, c) = state.machine.dot
-        Success(State(machine, state.io.put(c), state.step + 1))
+        state.ioUpdated(state.io.put(c)).map(state => State[S](machine, state.io, state.step + 1))
       case ',' =>
-        val res = state.io.get
-        //println(res)
-        Success(res._2 match {
-          case None => state.finish
-          case Some(c) => State(state.machine.comma(c), res._1, state.step + 1)
+        state.io.get.map(res => {
+          //println(res)
+          res._2 match {
+            case None => state.finish
+            case Some(c) => State[S](state.machine.comma(c), res._1, state.step + 1)
+          }
         })
       // NOTE: codel.close や code.open には Loops で解析した値が必ずある
       case '[' => state.updated(state.machine.open(code.close.get))
       case ']' => state.updated(state.machine.close(code.open.get))
       case _ => state.updated(state.machine.noop)
-    }
-    if (newState.isFailure || codes.lengthCompare(newState.get.machine.pos) > 0) {
-      newState
+    }).map(state => if (codes.lengthCompare(state.machine.pos) > 0) {
+      state
     } else {
-      Success(newState.get.finish)
-    }
-  }
+      state.finish
+    })
+  })
 
   // NOTE: パース済みコードを実行
-  def exec(codes: Vector[Code], gets: Seq[Byte]) : Try[Seq[Byte]] = {
-    val init : Try[State] = Success(State(BFMachine(), IO(gets)))
+  def exec(codes: Vector[Code], gets: Seq[Byte]) : Future[Seq[Byte]] = {
+    val init : Future[State[SeqIOStream]] = Future.successful(State(BFMachine(), SeqIOStream(gets, Seq.empty)))
     // NOTE: 無限ループ
-    Iterator.continually(0)
+    val states = Iterator.continually(0)
     // NOTE: 左畳み込みをしつつ途中経過をぜんぶ吐き出す
-    .scanLeft(init)((se, d) => se.flatMap(state => exec1(codes, state)))
+    .scanLeft(init)((state, dummy) => exec1[SeqIOStream](codes, state))
     // NOTE: 実行中の途中経過は捨てる
-    .dropWhile(res => res.isSuccess && !res.get.finished)
-    // NOTE: 実行終了 or エラー時の先頭以外を捨てて実態を取り出す
-    .take(1).toSeq.head
-    // NOTE: 返したい IO.out は Seq なので出力と逆順のコレクションになっている
-    .map(state => state.io.out.reverse)
+    Future.find(states.toIterable)(_.finished).map(_.get.io.out.reverse)
   }
 
-  def run(code: String, gets: Seq[Byte]) : Try[Seq[Byte]] = {
-    parse(code).flatMap(codes => exec(codes, gets))
+  def run(code: String, gets: Seq[Byte], result: Try[Seq[Byte]] => Unit) : Unit = {
+    Future.fromTry(parse(code)).flatMap(codes => exec(codes, gets)).onComplete(result)
   }
 }
