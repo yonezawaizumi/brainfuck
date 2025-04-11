@@ -55,10 +55,10 @@ case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
 }
 
 // NOTE: コード1つごとの機械の状態
-case class State(machine: BFMachine, io: IO, finished: Boolean = false) {
+case class State(machine: BFMachine, io: IO, step: Int = 1, finished: Boolean = false) {
   // I/O がない限りはメモリーのみ更新
-  def updated(machine: BFMachine) : Either[Error, State] = Right(State(machine, io))
-  def finish = State(machine, io, true)
+  def updated(machine: BFMachine) : Either[Error, State] = Right(State(machine, io, step + 1))
+  def finish = State(machine, io, step, true)
 }
 
 class Brainfuck {
@@ -82,18 +82,18 @@ class Brainfuck {
     // NOTE: 1命令ずつ実行する
     val newState = code.c match {
       case '>' => state.updated(state.machine.>)
-      case '<' => state.machine.<.map(machine => State(machine, state.io))
+      case '<' => state.machine.<.map(machine => State(machine, state.io, state.step + 1))
       case '+' => state.updated(state.machine.+)
       case '-' => state.updated(state.machine.-)
       case '.' =>
         val (machine, c) = state.machine.dot
-        Right(State(machine, state.io.put(c)))
+        Right(State(machine, state.io.put(c), state.step + 1))
       case ',' =>
         val res = state.io.get
         //println(res)
         Right(res._2 match {
           case None => state.finish
-          case Some(c) => State(state.machine.comma(c), res._1)
+          case Some(c) => State(state.machine.comma(c), res._1, state.step + 1)
         })
       // NOTE: codel.close や code.open には Loops で解析した値が必ずある
       case '[' => state.updated(state.machine.open(code.close.get))
