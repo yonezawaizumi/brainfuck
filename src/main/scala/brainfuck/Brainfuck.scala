@@ -117,7 +117,7 @@ class Brainfuck {
     .scanLeft(init)((se, d) => se.flatMap(state => exec1(codes, state)))
     // NOTE: 実行中の途中経過は捨てる
     .dropWhile(res => res.isSuccess && !res.get.finished)
-    // NOTE: 実行終了 or エラー時の先頭以外を捨てて実態を取り出す
+    // NOTE: 実行終了 or エラー時の先頭以外を捨てて実体を取り出す
     .take(1).toSeq.head
     // NOTE: 返したい IO.out は Seq なので出力と逆順のコレクションになっている
     .map(state => state.io.out.reverse)
