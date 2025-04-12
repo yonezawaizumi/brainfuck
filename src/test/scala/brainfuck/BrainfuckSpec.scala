@@ -12,7 +12,7 @@ class BrainfuckSpec extends munit.FunSuite {
 
   test("全バイトダンプ") {
     val source = ".+[.+]"
-    val result = (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
+    (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
       assert(result.isSuccess)
       assertEquals(result.toOption.get.map(_.toInt), (Range(0, 128) ++ Range(-128, 0)).toList)
     })
@@ -21,7 +21,7 @@ class BrainfuckSpec extends munit.FunSuite {
   test("echo") {
     val source = ",[.,]"
     val input = Range(33, 36).map(_.toByte)
-    val result = (new Brainfuck).run(source, input, (result : Try[Seq[Byte]]) => {
+    (new Brainfuck).run(source, input, (result : Try[Seq[Byte]]) => {
       assert(result.isSuccess)
       assertEquals(result.toOption.get, input)
     })
@@ -29,7 +29,7 @@ class BrainfuckSpec extends munit.FunSuite {
 
   test("excessive open") {
     val source = "++["
-    val result = (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
+    (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
       assert(result.isFailure)
       assertEquals(result.toEither.swap.toOption.get.getMessage, "loop overflow")
     })
@@ -37,7 +37,7 @@ class BrainfuckSpec extends munit.FunSuite {
 
   test("excessive close") {
     val source = "++][]"
-    val result = (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
+    (new Brainfuck).run(source, null, (result : Try[Seq[Byte]]) => {
      assert(result.isFailure)
       assertEquals(result.toEither.swap.toOption.get.getMessage, "loop underflow")
     })
