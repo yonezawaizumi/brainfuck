@@ -1,5 +1,8 @@
 import net.team2xh.scurses._
 import scala.collection.immutable._
+import scala.concurrent._
+import scala.concurrent.duration.Duration
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util._
 import scopt.OptionParser
 
@@ -42,7 +45,7 @@ object Main extends App{
 
     val (w, h) = screen.size
 
-    def dumpState(source: String, state :State[SeqIOStream]): Unit = {
+    def dumpState(source: String, state :State[SeqIOStream]) : Unit = {
       val it = Iterator.continually(0).zipWithIndex.map(_._2)
       // NOTE: ステップ数
       screen.put(0, it.next, state.step.toString + " steps")
@@ -66,23 +69,23 @@ object Main extends App{
       screen.put(0, it.next, PointerString.format(state.machine.pos, source.length))
     }
 
-    /*bf.parse(config.source).flatMap(codes => {
-      val init : Try[State] = Success(State(BFMachine(), IO(Seq.empty, Seq.empty)))
-      dumpState(config.source, init.toOption.get)
-      screen.refresh()
-      Iterator.continually(0)
-      .scanLeft(init)((se, d) => se.flatMap(state => {
-        val newState = bf.exec1(codes, state)
-        newState.foreach(state => {
-          dumpState(config.source, state)
-          screen.refresh()
-        })
-        Thread.sleep(10)
-        newState
-      }))
-      .dropWhile(res => res.isSuccess && !res.get.finished)
-      .take(1).toSeq.head
-    })*/
+    bf.parse(config.source) match {
+      case Failure(e) =>
+        screen.put(0, 0, e.getMessage)
+      case Success(codes) =>
+        def result(state: Future[State[SeqIOStream]]) : Future[Seq[Byte]] = {
+          bf.exec1(codes, state).flatMap(state => if (state.finished) {
+            Future.successful(state.io.out.reverse)
+          } else {
+            dumpState(config.source, state)
+            screen.refresh
+            Thread.sleep(config.autoStepMillisec)
+            result(Future.successful(state))
+          }
+        )}
+        val res = result(Future.successful(State(BFMachine(), SeqIOStream(Seq.empty, Seq.empty))))
+        Await.ready(res, Duration.Inf)      
+    }
     screen.put(0, h - 1, "press any key ")
     screen.refresh
     screen.keypress
