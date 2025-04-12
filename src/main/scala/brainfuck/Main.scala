@@ -72,22 +72,45 @@ object Main extends App{
     bf.parse(config.source) match {
       case Failure(e) =>
         screen.put(0, 0, e.getMessage)
+        screen.refresh
       case Success(codes) =>
         def result(state: Future[State[SeqIOStream]]) : Future[Seq[Byte]] = {
-          bf.exec1(codes, state).flatMap(state => if (state.finished) {
-            Future.successful(state.io.out.reverse)
-          } else {
+          bf.exec1(codes, state).flatMap(state => {
             dumpState(config.source, state)
             screen.refresh
-            Thread.sleep(config.autoStepMillisec)
-            result(Future.successful(state))
-          }
-        )}
+            if (state.finished) {
+              Future.successful(state.io.out.reverse)
+            } else {
+              result(Future.successful(if (config.autoStepMillisec > 0) {
+                Thread.sleep(config.autoStepMillisec)
+                state
+              } else {
+                screen.put(0, h - 1, "down key: next, ctrl-c: terminate")
+                screen.refresh
+                Iterator.continually(screen.keypress)
+                // FIXME: 調子によってなぜか↓キーが 66 （生の値）になることがある
+                .dropWhile(k => k != Keys.DOWN && k != 66 && k != Keys.CTRL_C && k != 3)
+                .take(1).toSeq.head match {
+                  // FIXME: state.finish で実行が止まらないため例外で終了させているがほんらいは正常終了すべき
+                  case Keys.CTRL_C | 3 => throw Error("terminated by user", state.machine.pos, state.machine.ptr)
+                  case _ => state
+                }
+              }))
+            }
+          })
+        }
+        // TODO: SeqIOStream を keypress 受け付けるようにしたい
         val res = result(Future.successful(State(BFMachine(), SeqIOStream(Seq.empty, Seq.empty))))
-        Await.ready(res, Duration.Inf)      
+        Await.ready(res, Duration.Inf).onComplete {
+          case Success(_) =>
+          case Failure(e) =>
+            screen.clear
+            screen.put(0, 0, e.getMessage)
+        }
     }
-    screen.put(0, h - 1, "press any key ")
+    screen.put(0, h - 1, "press any key                           ")
     screen.refresh
     screen.keypress
+    // TODO: 終了時になんかキーバッファーの値がおかしくなっていることがある
   }
 }
