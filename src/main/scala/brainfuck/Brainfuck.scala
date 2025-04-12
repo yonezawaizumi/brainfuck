@@ -4,6 +4,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util._
 
 // NOTE: エラー
+// TODO: すでにコード実行中の場合は機械の状態もダンプすべき
 case class Error(message: String, pos: Int = 0, ptr: Int = 0) extends java.lang.Exception(message)
 
 // NOTTE: 実行コード1つ
@@ -71,13 +72,8 @@ case class SeqIOStream(in :Seq[Byte], out :Seq[Byte]) extends IOStream[SeqIOStre
   def put(b: Byte) : Future[SeqIOStream] = Future.successful(SeqIOStream(in, b +: out))
 }
 
-// NOTE: I/O
-/*case class IO(in: Seq[Byte], out: Seq[Byte] = Seq.empty) {
-  def get = if (in.isEmpty) (this, None) else (IO(in.tail, out), Some(in.head))
-  def put(c: Byte) = IO(in, c +: out)
-}*/
-
 // NOTE: コード1つごとの機械の状態
+// FIXME: finished の判定が Future 絡みで怪しそう（再帰で finished を立てても止まらないことがある）
 case class State[S <: IOStream[S]](machine: BFMachine, io: S, step: Int = 1, finished: Boolean = false) {
   // I/O がない限りはメモリーのみ更新
   def updated(machine: BFMachine) : Future[State[S]] = Future.successful(State(machine, io, step + 1))
