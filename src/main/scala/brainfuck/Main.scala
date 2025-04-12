@@ -41,6 +41,7 @@ object Main extends App{
   Scurses { screen =>
 
     val (w, h) = screen.size
+    screen.clear
 
     def dumpState(source: String, state :State): Unit = {
       val it = Iterator.continually(0).zipWithIndex.map(_._2)
